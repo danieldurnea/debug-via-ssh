@@ -18,6 +18,14 @@ jobs:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         SSH_PASS: ${{ secrets.SSH_PASS }}
         NGROK_TIMEOUT: 25001
+        task:
+  name: "Kali Linux SSH"
+  trigger_type: manual
+  timeout_in: 120m
+  container:
+      image: kalilinux/kali-rolling:latest
+      cpu: 16
+      memory: 8G
         with:
         cache-from: type=gha
         cache-to: type=gha,mode=max
