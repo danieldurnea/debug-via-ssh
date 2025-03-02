@@ -1,18 +1,26 @@
-
-# https://github.com/rdp-studio/ssh2actions
-name: SSH Remote RDP
-run-name: SSH Remote RDP
-env:
-  # The name of the main module repository
-  main_project_module: workspace
-  
-on:
+name: Ubuntu ssh Virtual Machine
+on: 
   workflow_dispatch:
-
+defaults:
+  run:
+    shell: bash
+    
+    
 jobs:
   build:
-    runs-on: ubuntu-latest # Android SDK is built-in in this image
-        
+    runs-on: ubuntu-latest
     steps:
-    - name: Start SSH via tmate
-      uses: rdp-studio/ssh2actions@main
+    - uses: actions/checkout@v3
+#    - name: If failed, means ok
+#      run: ./not-exist-file.sh it bloke build
+    - name: Preparing Linux Environment
+      run: sudo apt-get update
+    - name: Setting Up the Ubuntu Environment
+    #  if: ${{ failure() }}
+      run: bash linux-ssh.sh
+      env:
+        LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Keep Running Ubuntu System and keepAlive
+     # if: ${{ failure() }}
+      run: sleep 6h
