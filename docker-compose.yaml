@@ -1,0 +1,48 @@
+version: '3.8'
+services:
+
+  kali:
+    build:
+      dockerfile: Dockerfile
+      context: ./kali
+    #image: 'kalilinux/kali-rolling'
+    container_name: kali
+    tty: true
+    restart: always
+    privileged: true   # Add the privileged option, SYS_ADMIN is limited, where privileged has full access
+    network_mode: host
+    stdin_open: true
+    ports:
+    - 127.0.0.1:8085:8085
+
+  ubuntu:
+    build:
+      dockerfile: Dockerfile
+      context: ./ubuntu
+    #image: 'ubuntu:jammy'
+    container_name: ubuntu
+    privileged: true
+    network_mode: host
+    tty: true
+    restart: always
+    stdin_open: true
+    ports:
+    - 127.0.0.1:8086:8086
+
+  kali_systemd_2:
+    build:
+      dockerfile: Dockerfile_systemd
+      context: ./kali
+    #image: 'kalilinux/kali-rolling'
+    # systemd image prebuilt
+    #image: 'lostcauze7/kali-dockerized:latest'
+    container_name: kali_systemd_2
+    network_mode: host
+    tty: true
+    restart: always
+    stdin_open: true
+    privileged: true   # Add the privileged option, SYS_ADMIN is limited, where privileged has full access
+    working_dir: /usr  # Add the working directory option
+    ports:
+      - 127.0.0.1:8087:8087
+    command: "/bin/bash"
