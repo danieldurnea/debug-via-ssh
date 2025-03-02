@@ -1,23 +1,55 @@
+name: SSH tunnel over ngrok
+description: Establishes an ngrok tunnel to the GitHub Action runner for debugging
 
-# https://github.com/rdp-studio/ssh2actions
-name: SSH Remote RDP
-run-name: SSH Remote RDP
-env:
-  # The name of the main module repository
-  main_project_module: workspace
-  
-on:
-  workflow_dispatch:
+branding:
+  icon: minimize-2
+  color: purple
 
-jobs:
-  build:
-    runs-on: ubuntu-latest # Android SDK is built-in in this image
-        
-    steps:
-    - name: Start SSH via tmate
-      uses: rdp-studio/ssh2actions@main
-#   Send connection info to Telegram (optional)
-#   You can find related documents here: https://core.telegram.org/bots
-#      env:
-#       TELEGRAM_BOT_TOKEN: <your token>
-#       TELEGRAM_CHAT_ID: <your id>
+inputs:
+  timeout:
+    description: Tunnel timeout
+    required: true
+    default: 1h
+  port:
+    description: Local port to forward to
+    required: true
+    default: 22
+  ssh_public_key:
+    description: Your SSH public key
+    required: true
+  ngrok_token:
+    description: Your ngrok auth token
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download ngrok
+      run: curl -sO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+      shell: bash
+    - name: Untar ngrok
+      run: tar xfz ngrok-v3-stable-linux-amd64.tgz
+      shell: bash
+    - name: Add ~/.ssh directory
+      run: mkdir -p ~/.ssh
+      shell: bash
+    - name: Add SSH public key to authorized_keys
+      run: echo "${{ inputs.ssh_public_key }}" >> ~/.ssh/authorized_keys
+      shell: bash
+    - name: Fix home directory permissions
+      run: chmod 755 ~
+      shell: bash
+    - run: chmod 600 ~/.ssh/authorized_keys
+      shell: bash
+    - name: Set ngrok auth token
+      run: ./ngrok authtoken ${{ inputs.ngrok_token }}
+      shell: bash
+    - name: Debug message
+      run: echo "Starting ngrok tunnel..."
+      shell: bash
+    - name: Setup ngrok tunnel
+      run: timeout ${{ inputs.timeout }} ./ngrok tcp ${{ inputs.port }} &
+      shell: bash
+    - name: Debug message
+      run: echo "Tunnel started."
+      shell: bash
