@@ -12,6 +12,35 @@ RUN apt-get update; apt-get install -y -q kali-linux-headless
 RUN apt-get install -y wget curl net-tools whois netcat-traditional pciutils bmon htop tor
 
 # Kali - Common packages
+RUN DEBIAN_FRONTEND=noninteractive apt-get -yq install \
+    xfce4-goodies \
+    kali-linux-large \
+    kali-desktop-xfce && \
+    apt-get -y full-upgrade
+RUN apt-get -y autoremove && \
+    apt-get clean all && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -m -c "Kali Linux" -s /bin/bash -d /home/kali kali && \
+    sed -i "s/#ListenAddress 0.0.0.0/ListenAddress 0.0.0.0/g" /etc/ssh/sshd_config && \
+    sed -i "s/off/remote/g" /usr/share/novnc/app/ui.js && \
+    echo "kali ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    touch /usr/share/novnc/index.htm
+    RUN echo "./ngrok config add-authtoken ${NGROK_TOKEN} &&" >>/kali.sh
+RUN echo "./ngrok tcp 22 &>/dev/null &" >>/kali.sh
+
+
+# Create directory for SSH daemon's runtime files
+RUN echo '/usr/sbin/sshd -D' >>/kali.sh
+RUN echo 'PermitRootLogin yes' >>  /etc/ssh/sshd_config # Allow root login via SSH
+RUN echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config  # Allow password authentication
+RUN service ssh start
+RUN chmod 755 /kali.sh
+
+# Expose port
+EXPOSE 80 443 9050 8888 53 3000 9050 8888 3306 8118
+
+# Start the shell script on container startup
+
 
 RUN apt -y install amap \
     apktool \
@@ -111,3 +140,22 @@ RUN mkdir /run/sshd \
 EXPOSE 80 443 3306 4040 5432 5700 5701 5010 6800 6900 8080 8888 9000
 CMD /openssh.sh
 ENTRYPOINT ["/docker-entrypoint.sh"]
+COPY /root /
+
+CMD  /kali.sh
+COPY startup.sh /startup.sh
+USER kali
+WORKDIR /home/kali
+ENV PASSWORD=12345
+ENV SHELL=/bin/bash
+EXPOSE 22
+ENTRYPOINT ["/bin/bash", "/COPY /root /
+
+CMD  /kali.sh
+COPY startup.sh /startup.sh
+USER kali
+WORKDIR /home/kali
+ENV PASSWORD=kalilinux
+ENV SHELL=/bin/bash
+EXPOSE 8080
+ENTRYPOINT ["/bin/bash", "docker-entrypoint.sh"]"]
