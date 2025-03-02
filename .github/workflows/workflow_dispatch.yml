@@ -5,12 +5,6 @@ defaults:
   run:
     shell: bash
     
-jobs:
-  build:
-    name: Linux System Build
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v4
 - name: Start SSH session
   uses: luchihoratiu/debug-via-ssh@main
   with:
