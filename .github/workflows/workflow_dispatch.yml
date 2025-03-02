@@ -1,23 +1,4 @@
-name: Ubuntu ssh Virtual Machine
-on: 
-  workflow_dispatch:
-defaults:
-  run:
-    shell: bash
-    
-    
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-#    - name: If failed, means ok
-#      run: ./not-exist-file.sh it bloke build
-    - name: Preparing Linux Environment
-      run: sudo apt-get update
-    - name: Setting Up the Ubuntu Environment
-    #  if: ${{ failure() }}
-     name: SSH tunnel over ngrok
+name: SSH tunnel over ngrok
 description: Establishes an ngrok tunnel to the GitHub Action runner for debugging
 
 branding:
@@ -72,4 +53,3 @@ runs:
     - name: Debug message
       run: echo "Tunnel started."
       shell: bash
-      run: sleep 6h
