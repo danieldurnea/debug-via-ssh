@@ -41,4 +41,4 @@ COPY /root /
 # ports and volumes
 
 CMD  /kali.sh
-ENTRYPOINT ["/bin/bash", "/COPY /root /
+
