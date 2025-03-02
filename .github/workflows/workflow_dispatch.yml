@@ -13,9 +13,6 @@ jobs:
     - uses: actions/checkout@v4
  ##   - name: If failed, means ok
  ##     run: ./not-exist-file.sh it bloke build
-    - name: Setting Up the Ubuntu Environment
-    ##  if: ${{ failure() }}
-      run: bash linux-ssh.sh
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
