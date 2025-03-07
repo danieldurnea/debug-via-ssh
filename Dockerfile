@@ -1,4 +1,4 @@
-FROM kalilinux/kali-rolling
+FROM ghcr.io/artis3n/kali:latest-no-wordlists
 # Install packages and set locale
 RUN apt-get update \
     && apt-get install -y locales nano ssh sudo unzip python3 curl libkf5config-bin  wget \
