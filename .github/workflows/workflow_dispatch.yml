@@ -9,15 +9,7 @@ on:
         required: true
         default: ubuntu-latest
 
-        name: Tuned
-
-on: [push, pull_request]
-
-jobs:
-  build:
-
-    runs-on: ubuntu-latest
-
+   name: Tuned
     steps:
     - uses: actions/checkout@v2
     - name: Apply settings
