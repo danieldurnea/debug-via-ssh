@@ -8,17 +8,6 @@ on:
         description: 'Leave only desired OS in the field'
         required: true
         default: ubuntu-latest
-
-   name: Tuned
-    steps:
-    - uses: actions/checkout@v2
-    - name: Apply settings
-      run: ./speedup.sh
-    - name: Update apt sources
-      run: sudo apt-get update -y
-    - name: Install libguestfs-tools
-      run: sudo apt-get install libguestfs-tools -y
-      
 jobs:
   start_ssh_session:
     runs-on: ${{ github.event.inputs.os }}
