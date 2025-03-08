@@ -147,5 +147,12 @@ runs:
           time=$((time-10))
         done
 
+      name: 'Speedup package installation'
+description: 'Tune your runtime on ubuntu-latest'
+runs:
+  using: "composite"
+  steps:
+    - run: ${{ github.action_path }}/speedup.sh
+      shell: bash
         echo "# SSH session terminated. Allowing workflow to continue..."
       shell: bash
