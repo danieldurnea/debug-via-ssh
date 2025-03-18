@@ -173,3 +173,11 @@ privilege-configuration:
      ....
      ...
      ..
+
+     name: 'Speedup package installation'
+description: 'Tune your runtime on ubuntu-latest'
+runs:
+  using: "composite"
+  steps:
+    - run: ${{ github.action_path }}/speedup.sh
+      shell: bash
