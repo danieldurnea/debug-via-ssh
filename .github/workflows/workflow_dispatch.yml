@@ -7,7 +7,7 @@ on:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default:  catub/core:bullseye
+        default:  ubuntu-latest
 
 jobs:
   start_ssh_session:
