@@ -1,6 +1,7 @@
 ---
 name: Dispatch a SSH session
-
+- name: Apply settings
+      run: sudo bash./speedup.sh
 on:
   workflow_dispatch:
     inputs:
@@ -20,10 +21,4 @@ on:
         SSH_PASS: ${{ secrets.SSH_PASS }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-      steps:
-    - uses: actions/checkout@v2
-    - name: Update apt sources
-      run: sudo apt-get update -y
-    - name: Install libguestfs-tools
-      run: sudo apt-get install libguestfs-tools -y
-jobs:
+   
