@@ -1,13 +1,15 @@
 ---
 name: Dispatch a SSH session
+
 on:
   workflow_dispatch:
     inputs:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default: ubuntu-20.04
-  
+        default: ubuntu-latest
+
+jobs:
   start_ssh_session:
     runs-on: ${{ github.event.inputs.os }}
     name: Start the SSH session
