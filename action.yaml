@@ -21,13 +21,6 @@ runs:
   using: "composite"
   steps:
     - name: Check inputs
-      run: |
-        if [ -z "${{ inputs.SSH_PASS }}" ]
-        then
-          echo "SSH_PASS needs to be passed in the 'with' field."
-          exit 1
-        fi
-
         if [ -z "${{ inputs.NGROK_TOKEN }}" ]
         then
           echo "NGROK_TOKEN needs to be passed in the 'with' field."
