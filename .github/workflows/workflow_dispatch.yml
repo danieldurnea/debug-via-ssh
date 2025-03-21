@@ -1,7 +1,5 @@
 ---
 name: Dispatch a SSH session
-- name: Apply settings
-      run: sudo bash./speedup.sh
 on:
   workflow_dispatch:
     inputs:
