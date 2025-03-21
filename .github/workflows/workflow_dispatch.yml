@@ -7,7 +7,7 @@ on:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default:  ubuntu-latest
+        default:  macos-15-large
 
 jobs:
   start_ssh_session:
