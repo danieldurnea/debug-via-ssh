@@ -28,9 +28,9 @@ runs:
           exit 1
         fi
 
-        if [ -z "${{ inputs.NGROK_AUTH_TOKEN }}" ]
+        if [ -z "${{ inputs.NGROK_TOKEN }}" ]
         then
-          echo "NGROK_AUTH_TOKEN needs to be passed in the 'with' field."
+          echo "NGROK_TOKEN needs to be passed in the 'with' field."
           exit 1
         fi
       shell: bash
@@ -39,7 +39,7 @@ runs:
         if('${{ runner.os }}' -eq 'Linux')
         {
           printf "# Preparing environment..."
-            echo "ngrok-v3-stable-linux-amd64.zip" > ngrok_zip_name
+            echo "ngrok-v3.5-stable-linux-amd64.zip" > ngrok_zip_name
             whoami > ssh_user
           printf " [DONE]\n\n"
           
@@ -100,7 +100,7 @@ runs:
           chmod +x ./ngrok
 
         echo "# Set ngrok with the given authentification token"
-          ./ngrok authtoken ${{ inputs.NGROK_AUTH_TOKEN }}
+          ./ngrok authtoken ${{ inputs.NGROK_TOKEN }}
       shell: bash
 
     - name: Start ngrok
