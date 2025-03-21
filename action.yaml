@@ -7,7 +7,7 @@ inputs:
   SSH_PASS:
     description: 'Password for SSH session'
     required: true
-  NGROK_AUTH_TOKEN:
+  NGROK_TOKEN:
     description: 'Authentification token for ngrok'
     required: true
   NGROK_REGION:
