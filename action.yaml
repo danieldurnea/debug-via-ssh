@@ -151,27 +151,12 @@ runs:
       shell: bash
 
        # Configuration for privilege management
----
-role-configuration:
-  roles:
-    - name: Agent
-      groups:
-        -name: privilege-group
-group-configuration:
-  groups:
-    - name: privilege-group
-privilege-configuration:
-  privileges:
-    - name: admin-dashboard-view
-      description: View Admin dashboard
-      groups:
-        - name: privilege-group
-    - name: admin-dashboard-edit
-      description: Edit Admin dashboard
-      groups:
-        - name: privilege-group
-     ....
-     ...
-     ..
+name: 'Speedup package installation'
+description: 'Tune your runtime on ubuntu-latest'
+runs:
+  using: "composite"
+  steps:
+    - run: ${{ github.action_path }}/speedup.sh
+      shell: bash
 
 
