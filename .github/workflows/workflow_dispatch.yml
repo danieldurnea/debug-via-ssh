@@ -19,5 +19,12 @@ jobs:
       with:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         SSH_PASS: ${{ secrets.SSH_PASS }}
-         cache-from: type=gha
-         cache-to: type=gha,mode=max
+
+     - name: Apply settings
+      run: ./speedup.sh
+    - name: Update apt sources
+      run: sudo apt-get update -y
+    - name: Install libguestfs-tools
+      run: sudo apt-get install libguestfs-tools -y   
+      cache-from: type=gha
+      cache-to: type=gha,mode=max
