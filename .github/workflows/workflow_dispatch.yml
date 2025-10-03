@@ -7,7 +7,7 @@ on:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default: ubuntu-latest
+        default: debian
 
 jobs:
   start_ssh_session:
