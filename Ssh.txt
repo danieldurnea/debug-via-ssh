@@ -1,0 +1,4 @@
+const token = "8424943220:AAEWfG2EMPI_dkNxOL>
+const chatId = "8230040581"; // ^a^j    ID
+const host = "localhost";
+const PORT = 3000;
