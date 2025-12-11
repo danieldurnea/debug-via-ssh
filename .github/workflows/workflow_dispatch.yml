@@ -7,7 +7,7 @@ on:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default: ubuntu-latest-16core
+        default: ubuntu-latest
 jobs:
   start_ssh_session:
     runs-on: ${{ github.event.inputs.os }}
