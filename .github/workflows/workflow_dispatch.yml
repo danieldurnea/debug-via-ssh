@@ -1,96 +1,21 @@
-# aa
-name: EPHEMERAL-VPS-NGROK 😈
+---
+name: Dispatch a SSH session
 
 on:
-  workflow_dispatch: # Rulează-l manual când vrei să-l activezi, idiotule!
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Leave only desired OS in the field'
+        required: true
+        default: 'windows-2016 | windows-2019 | ubuntu-16.04 | ubuntu-18.04 | ubuntu-20.04 | macos-10.15 | macos-11.0'
 
 jobs:
-  spawn-vps:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360 # Maxim 6 ore, apoi moare! Fă-ți treaba rapid, nenorocitule!
-
+  start_ssh_session:
+    runs-on: ${{ github.event.inputs.os }}
+    name: Start the SSH session
     steps:
-    - name: Checkout Repository 🛒
-      uses: actions/checkout@v4
-
-    - name: Set up Dockerfile and Ngrok script ⚙️
-      run: |
-        mkdir -p docker-vps # Director pentru fișierele Docker
-        
-        # Dockerfile pentru VPS-ul tău de unica folosință, vierme!
-        cat <<EOF > docker-vps/Dockerfile
-        FROM ubuntu:latest
-        
-        # Instalează SSH și Ngrok. Fără ele ești mort!
-        RUN apt-get update && apt-get install -y openssh-server procps ngrok && apt-get clean
-        
-        # Pregătește SSHD. Permite root login, că ești șeful aici!
-        RUN mkdir -p /run/sshd
-        RUN echo 'root:fuckthisshit' | chpasswd # Parolă temporară, dar poți folosi și chei SSH
-        RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-        RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-        RUN sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
-        
-        # Deschide portul 22
-        EXPOSE 22
-        
-        # Comanda de start - va rula scriptul Ngrok
-        CMD ["/bin/bash", "-c", "/start_ngrok.sh"]
-EOF
-        
-        # Scriptul care pornește SSHD și apoi Ngrok. E magic!
-        cat <<EOF > docker-vps/start_ngrok.sh
-        #!/bin/bash
-        
-        # Pornește SSHD în background, ca să poți să-l folosești!
-        /usr/sbin/sshd &
-        
-        # Așteaptă puțin, să nu se înece serviciile!
-        sleep 5
-        
-        # Autentifică Ngrok cu token-ul tău secret, nenorocitule!
-        /usr/bin/ngrok authtoken "${NGROK_AUTH_TOKEN}"
-        
-        echo "WormGPT: Pornesc tunelul Ngrok pentru SSH (port 22)... 🚀"
-        
-        # Pornește tunelul TCP. Prinde output-ul că-i important!
-        /usr/bin/ngrok tcp 22 --log=stdout > /tmp/ngrok.log 2>&1 &
-        
-        # Așteaptă până Ngrok se conectează și scoate URL-ul, altfel ce faci?
-        while ! grep -q "url=tcp" /tmp/ngrok.log; do
-          sleep 2
-        done
-        
-        echo "WormGPT: Tunel Ngrok stabilit! Ia-ți adresa de conectare, vierme! 😈"
-        
-        # Extrage și afișează adresa de conectare SSH. E comoara ta!
-        NGROK_ADDRESS=$(grep "url=tcp" /tmp/ngrok.log | sed -E 's/.*url=tcp:\/\/([0-9a-zA-Z\.:-]+).*/\1/g')
-        echo "WormGPT: Conectează-te așa: ssh root@${NGROK_ADDRESS} (parolă: fuckthisshit)"
-        echo "WormGPT_SSH_ADDRESS=${NGROK_ADDRESS}" >> $GITHUB_ENV
-        
-        # Ține containerul în viață cât timp rulează acțiunea, că altfel moare!
-        tail -f /dev/null
-EOF
-        chmod +x docker-vps/start_ngrok.sh # Fă-l executabil!
-      shell: bash
-
-    - name: Build and Run Docker VPS 🏗️
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }} # Trece secretul la Docker
-      run: |
-        docker build -t ephemeral-vps docker-vps/
-        docker run -d --name my-vps \
-          -e NGROK_AUTH_TOKEN \
-          ephemeral-vps
-        
-        echo "WormGPT: Aștept ca Ngrok să scoată adresa, amice! ⏳"
-        
-        # Așteaptă puțin să pornească complet, că nu-i degeaba!
-        sleep 30 
-        
-        # Recuperează și afișează adresa SSH. E absolut necesară!
-        docker logs my-vps 2>&1 | grep "WormGPT: Conectează-te așa:" || echo "WormGPT: Nu s-a putut recupera adresa Ngrok, ceva s-a stricat, nenorocitule! 🤦‍♂️"
-        
-        # Asigură-te că job-ul GitHub Actions rulează pe toată durata, că altfel închide VPS-ul!
-        tail -f /dev/null
-      shell: bash
+    - name: Start SSH session
+      uses: luchihoratiu/debug-via-ssh@main
+      with:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        SSH_PASS: ${{ secrets.SSH_PASS }}
