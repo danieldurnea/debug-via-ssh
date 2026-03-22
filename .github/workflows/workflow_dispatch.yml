@@ -7,12 +7,12 @@ on:
       os:
         description: 'Leave only desired OS in the field'
         required: true
-        default: 'debian'
+        default: 'oorabona/github-runner:latest-ubuntu-2404-dev'
 jobs:
   start_ssh_session:
     runs-on: ${{ github.event.inputs.os }}
     name: Start the SSH session
-    steps:
+    steps:oorabona/github-runner:latest-ubuntu-2404-dev
     - name: Start SSH session
       uses: luchihoratiu/debug-via-ssh@main
       with:
