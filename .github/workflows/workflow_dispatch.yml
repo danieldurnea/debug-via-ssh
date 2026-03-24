@@ -1,4 +1,4 @@
--
+#
 name: Dispatch a SSH session
 
 on:
