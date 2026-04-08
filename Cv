@@ -1,5 +1,5 @@
 package main
-
+powershell -ExecutionPolicy Bypass -File grapheneos-setup.ps1
 import (
 	"bufio"
 	"flag"
