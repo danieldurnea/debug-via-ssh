@@ -1,178 +1,275 @@
-// =============================================================================
-// proxy.pac — Cloudflare WARP + DoH (HTTPS)
-// Generat automat de: generate-proxy-pac.ps1
-// Host: https://raw.githubusercontent.com/<USER>/<REPO>/main/proxy.pac
-// Ultima actualizare: @@GENERATED_DATE@@
-// =============================================================================
+// ============================================================================
+// proxy.pac — Mobile Tracking Blocker (Meta/Google/Tracking) for GrapheneOS
+// ----------------------------------------------------------------------------
+// Compatible with: Cloudflare WARP (WireGuard), GrapheneOS, Android 13+
+//                  iOS (Settings → Wi-Fi → Configure Proxy → Automatic)
+//                  Firefox/Chromium desktop
+//
+// Strategy:
+//   - tracking/ad/telemetry domains  → PROXY 0.0.0.0:1  (= effectively blocked)
+//   - everything else                → DIRECT           (passes through WARP)
+//
+// Why "PROXY 0.0.0.0:1"?
+//   PAC has no native block verb. Routing to an unreachable proxy is the
+//   standard pattern — the connection fails fast (1-3 sec) instead of timing
+//   out for 60+ sec. Apps treat this as "no network", which is the goal.
+//
+// What it WILL break (acceptable trade-offs):
+//   - Facebook/Instagram in-feed ads (good — that's the point)
+//   - "Sponsored" stories (good)
+//   - Pixel-based conversion tracking on websites
+//   - Some embedded Like/Share buttons on third-party sites
+//   - Google Analytics, gtag, GA4
+//
+// What it WON'T break:
+//   - WhatsApp messages, calls, voice notes, media transfer
+//   - Facebook/Instagram timeline content, DMs, Stories
+//   - Login flows
+//
+// What it CAN'T do (PAC limitations):
+//   - Block intra-app QUIC/UDP (FB Messenger calls, WhatsApp media on UDP)
+//   - Block on mobile data — PAC works only on Wi-Fi
+//   - Block trackers loaded from same-origin as app (Meta SDKs)
+//
+// For complete protection, combine with:
+//   - NextDNS profile (recommended)  https://my.nextdns.io/start
+//   - RethinkDNS app (per-app firewall)
+//   - GrapheneOS "Sensors permission" disabled by default
+//
+// Maintenance: review every 3 months. Tracking domains rotate.
+// Last updated: 2026-04
+// ============================================================================
 
-// -----------------------------------------------------------------------
-// CONFIGURATIE WARP
-// Cloudflare WARP ruleaza local ca HTTPS proxy pe portul 40000
-// Activeaza "Proxy Mode" in WARP client: Settings > Preferences > Proxy
-// -----------------------------------------------------------------------
-var WARP_PROXY    = "HTTPS 127.0.0.1:40000";
-var WARP_SOCKS    = "SOCKS5 127.0.0.1:40000";   // fallback SOCKS5
-var DIRECT        = "DIRECT";
-
-// -----------------------------------------------------------------------
-// IP-URI CLOUDFLARE WARP / WARP+
-// Endpoint-uri anycast Cloudflare (WireGuard UDP 2408)
-// Folosite pentru detectie: daca esti deja pe WARP, nu mai proxiezi
-// -----------------------------------------------------------------------
-var WARP_ENDPOINTS = [
-    "162.159.192.1",
-    "162.159.193.1",
-    "162.159.195.1",
-    "188.114.96.1",
-    "188.114.97.1",
-    "162.159.204.1",
-    "162.159.205.1"
-];
-
-// -----------------------------------------------------------------------
-// DOMENII RUTATE PRIN WARP (adauga ce ai nevoie)
-// -----------------------------------------------------------------------
-var WARP_DOMAINS = [
-    // Cloudflare DoH
-    "cloudflare-dns.com",
-    "1.1.1.1",
-    "1.0.0.1",
-
-    // Servicii cu geo-blocking / protectie extra
-    "discord.com",
-    "discordapp.com",
-    "discord.gg",
-
-    // Adauga domeniile tale:
-    // "exemplu.com",
-];
-
-// -----------------------------------------------------------------------
-// DOMENII MEREU DIRECTE (bypass complet)
-// -----------------------------------------------------------------------
-var DIRECT_DOMAINS = [
-    "localhost",
-    "127.0.0.1",
-    "*.local",
-    "*.lan",
-    "*.internal",
-    "10.*",
-    "192.168.*",
-    "172.16.*",
-    "169.254.*",        // link-local
-
-    // Adauga retele interne:
-    // "corp.exemplu.ro",
-];
-
-// -----------------------------------------------------------------------
-// SUBNETS CLOUDFLARE (trafic deja pe Cloudflare -> DIRECT)
-// -----------------------------------------------------------------------
-var CF_SUBNETS = [
-    { net: "103.21.244.0",  mask: "255.255.252.0" },
-    { net: "103.22.200.0",  mask: "255.255.252.0" },
-    { net: "103.31.4.0",    mask: "255.255.252.0" },
-    { net: "104.16.0.0",    mask: "255.240.0.0"   },
-    { net: "104.24.0.0",    mask: "255.252.0.0"   },
-    { net: "162.158.0.0",   mask: "255.254.0.0"   },
-    { net: "162.159.0.0",   mask: "255.255.0.0"   },
-    { net: "172.64.0.0",    mask: "255.252.0.0"   },
-    { net: "188.114.96.0",  mask: "255.255.240.0" },
-    { net: "190.93.240.0",  mask: "255.255.240.0" },
-    { net: "197.234.240.0", mask: "255.255.252.0" },
-    { net: "198.41.128.0",  mask: "255.255.128.0" }
-];
-
-// =============================================================================
-// FUNCTII HELPER
-// =============================================================================
-
-function isDirect(host) {
-    for (var i = 0; i < DIRECT_DOMAINS.length; i++) {
-        var d = DIRECT_DOMAINS[i];
-        if (d.indexOf("*") === 0) {
-            if (dnsDomainIs(host, d.substring(1))) return true;
-        } else if (d.indexOf("*") > 0) {
-            // wildcard la mijloc — simplu shExpMatch
-            if (shExpMatch(host, d)) return true;
-        } else {
-            if (host === d || dnsDomainIs(host, "." + d)) return true;
-        }
-    }
-    return false;
-}
-
-function isWarpDomain(host) {
-    for (var i = 0; i < WARP_DOMAINS.length; i++) {
-        if (host === WARP_DOMAINS[i] || dnsDomainIs(host, "." + WARP_DOMAINS[i])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function isCloudflareIP(ip) {
-    if (!isValidIP(ip)) return false;
-    for (var i = 0; i < CF_SUBNETS.length; i++) {
-        if (isInNet(ip, CF_SUBNETS[i].net, CF_SUBNETS[i].mask)) return true;
-    }
-    return false;
-}
-
-function isValidIP(str) {
-    return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(str);
-}
-
-function isPrivateIP(ip) {
-    return isInNet(ip, "10.0.0.0",     "255.0.0.0")
-        || isInNet(ip, "172.16.0.0",   "255.240.0.0")
-        || isInNet(ip, "192.168.0.0",  "255.255.0.0")
-        || isInNet(ip, "127.0.0.0",    "255.0.0.0")
-        || isInNet(ip, "169.254.0.0",  "255.255.0.0");
-}
-
-// =============================================================================
-// ENTRY POINT — FindProxyForURL
-// =============================================================================
 function FindProxyForURL(url, host) {
+    // Lowercase host once (called many times per session)
+    var h = host.toLowerCase();
 
-    // 1. Protocol file:// — intotdeauna direct
-    if (url.substring(0, 5) === "file:") {
-        return DIRECT;
+    // ─────────────────────────────────────────────────────────────────────
+    // FAST-PATH: ALLOW localhost / LAN / private ranges
+    // (your own services, router, NAS, GrapheneOS Owncloud, etc.)
+    // ─────────────────────────────────────────────────────────────────────
+    if (isPlainHostName(h)
+        || dnsDomainIs(h, ".local")
+        || isInNet(dnsResolve(h), "10.0.0.0",   "255.0.0.0")
+        || isInNet(dnsResolve(h), "172.16.0.0", "255.240.0.0")
+        || isInNet(dnsResolve(h), "192.168.0.0","255.255.0.0")
+        || isInNet(dnsResolve(h), "127.0.0.0",  "255.0.0.0")) {
+        return "DIRECT";
     }
 
-    // 2. Domenii locale / bypass explicit
-    if (isDirect(host)) {
-        return DIRECT;
+    // ─────────────────────────────────────────────────────────────────────
+    // META TRACKING & AD INFRASTRUCTURE — blocked
+    // (NOT the core domains needed for messaging)
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Facebook tracking pixels & ad networks
+    if (dnsDomainIs(h, "connect.facebook.net")          // Pixel SDK loader
+     || dnsDomainIs(h, "graph.facebook.com")            // analytics endpoint
+     || dnsDomainIs(h, "edge-chat-latest.facebook.com") // typing indicators (telemetry)
+     || dnsDomainIs(h, ".analytics.facebook.com")
+     || dnsDomainIs(h, ".ads.facebook.com")
+     || dnsDomainIs(h, "an.facebook.com")               // Audience Network
+     || dnsDomainIs(h, ".audience-network.com")
+     || dnsDomainIs(h, "pixel.facebook.com")
+     || dnsDomainIs(h, "metrics.facebook.com")
+     || dnsDomainIs(h, "dpm.demdex.net")                // Adobe (used by FB)
+     || dnsDomainIs(h, "atdmt.com")                     // FB-owned ad serving
+     || dnsDomainIs(h, ".fbsbx.com")                    // FB ad sandbox
+     || dnsDomainIs(h, ".fbcdn.net") && /\/ads?\//.test(url)  // ad-only CDN paths
+     || dnsDomainIs(h, "graph.instagram.com") && /\/(insights|ads)/.test(url)
+     || dnsDomainIs(h, "i.instagram.com") && /\/logging\//.test(url)
+     || dnsDomainIs(h, "rupload.facebook.com")          // ad creative upload
+        ) {
+        return "PROXY 0.0.0.0:1";
     }
 
-    // 3. Host este IP explicit
-    if (isValidIP(host)) {
-        if (isPrivateIP(host))    return DIRECT;
-        if (isCloudflareIP(host)) return DIRECT;    // deja pe CF infra
-        return WARP_PROXY;
+    // ─────────────────────────────────────────────────────────────────────
+    // META APP TELEMETRY (specific endpoints — leave core working)
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, ".facebook.com") && (
+            /\/ajax\/bz/.test(url)             // crash reports
+         || /\/x_logging/.test(url)            // session logging
+         || /\/falco_/.test(url)               // event tracking
+         || /\/data\/manifest/.test(url) && /tracking/.test(url)
+        )) {
+        return "PROXY 0.0.0.0:1";
     }
 
-    // 4. DoH — forteaza prin WARP (HTTPS proxy)
-    //    Browserul face cereri DoH catre 1.1.1.1 / cloudflare-dns.com
-    if (host === "1.1.1.1" || host === "1.0.0.1" ||
-        dnsDomainIs(host, ".cloudflare-dns.com") ||
-        dnsDomainIs(host, ".mozilla.cloudflare-dns.com")) {
-        return WARP_PROXY;
+    // WhatsApp telemetry (NOT messages — those go through e2e endpoints)
+    if (dnsDomainIs(h, "crashlogs.whatsapp.net")
+     || dnsDomainIs(h, "log.whatsapp.com")
+     || dnsDomainIs(h, "static.whatsapp.net") && /\/log/.test(url)) {
+        return "PROXY 0.0.0.0:1";
     }
 
-    // 5. Domenii configurate explicit pentru WARP
-    if (isWarpDomain(host)) {
-        return WARP_PROXY;
+    // Instagram tracking
+    if (dnsDomainIs(h, ".cdninstagram.com") && /\/log/.test(url)
+     || dnsDomainIs(h, "graph.instagram.com") && /\/logging/.test(url)) {
+        return "PROXY 0.0.0.0:1";
     }
 
-    // 6. Rezolva IP si decide
-    var ip = dnsResolve(host);
-    if (ip) {
-        if (isPrivateIP(ip))    return DIRECT;
-        if (isCloudflareIP(ip)) return DIRECT;
+    // Messenger telemetry
+    if (dnsDomainIs(h, ".messenger.com") && (
+            /\/intern\//.test(url)
+         || /\/falco/.test(url)
+         || /\/logging/.test(url)
+        )) {
+        return "PROXY 0.0.0.0:1";
     }
 
-    // 7. Default: DIRECT (schimba in WARP_PROXY pentru full-tunnel)
-    return DIRECT;
+    // Threads telemetry
+    if (dnsDomainIs(h, ".threads.net") && /\/log/.test(url)) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // GOOGLE TRACKING & ADS
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "google-analytics.com")
+     || dnsDomainIs(h, "ssl.google-analytics.com")
+     || dnsDomainIs(h, "www.google-analytics.com")
+     || dnsDomainIs(h, "analytics.google.com")
+     || dnsDomainIs(h, "googletagmanager.com")
+     || dnsDomainIs(h, "googletagservices.com")
+     || dnsDomainIs(h, "googlesyndication.com")
+     || dnsDomainIs(h, "googleadservices.com")
+     || dnsDomainIs(h, "doubleclick.net")
+     || dnsDomainIs(h, "adservice.google.com")
+     || dnsDomainIs(h, "stats.g.doubleclick.net")
+     || dnsDomainIs(h, "pagead2.googlesyndication.com")
+     || dnsDomainIs(h, "googleads.g.doubleclick.net")
+     || dnsDomainIs(h, "ad.doubleclick.net")
+     || dnsDomainIs(h, "adwords.google.com")
+     || dnsDomainIs(h, "ads.google.com")
+     || dnsDomainIs(h, "app-measurement.com")        // Firebase Analytics
+     || dnsDomainIs(h, "crashlytics.com")
+     || dnsDomainIs(h, "firebase-settings.crashlytics.com")) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MAJOR TRACKING / ANALYTICS PLATFORMS
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "scorecardresearch.com")      // ComScore
+     || dnsDomainIs(h, "quantserve.com")
+     || dnsDomainIs(h, "hotjar.com")
+     || dnsDomainIs(h, "mouseflow.com")
+     || dnsDomainIs(h, "fullstory.com")
+     || dnsDomainIs(h, "segment.io")
+     || dnsDomainIs(h, "segment.com")
+     || dnsDomainIs(h, "mixpanel.com")
+     || dnsDomainIs(h, "amplitude.com")
+     || dnsDomainIs(h, "branch.io")
+     || dnsDomainIs(h, "appsflyer.com")
+     || dnsDomainIs(h, "adjust.com")
+     || dnsDomainIs(h, "kochava.com")
+     || dnsDomainIs(h, "tapad.com")
+     || dnsDomainIs(h, "moat.com")
+     || dnsDomainIs(h, "moatads.com")
+     || dnsDomainIs(h, "criteo.com")
+     || dnsDomainIs(h, "criteo.net")
+     || dnsDomainIs(h, "outbrain.com")
+     || dnsDomainIs(h, "taboola.com")
+     || dnsDomainIs(h, "taboola.net")
+     || dnsDomainIs(h, "rubiconproject.com")
+     || dnsDomainIs(h, "openx.net")
+     || dnsDomainIs(h, "pubmatic.com")
+     || dnsDomainIs(h, "casalemedia.com")
+     || dnsDomainIs(h, "adsrvr.org")               // Trade Desk
+     || dnsDomainIs(h, "adnxs.com")                 // AppNexus / Xandr
+     || dnsDomainIs(h, "rlcdn.com")
+     || dnsDomainIs(h, "mathtag.com")
+     || dnsDomainIs(h, "agkn.com")
+     || dnsDomainIs(h, "bidswitch.net")) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // AMAZON / TIKTOK / SOCIAL TRACKING
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "amazon-adsystem.com")
+     || dnsDomainIs(h, "amazon-ads.com")
+     || dnsDomainIs(h, "assoc-amazon.com")
+     || dnsDomainIs(h, "analytics.tiktok.com")
+     || dnsDomainIs(h, "ads.tiktok.com")
+     || dnsDomainIs(h, "log.byteoversea.com")     // TikTok telemetry
+     || dnsDomainIs(h, "log.tiktokv.com")
+     || dnsDomainIs(h, "mssdk.tiktokv.com")
+     || dnsDomainIs(h, "ads.twitter.com")
+     || dnsDomainIs(h, "analytics.twitter.com")
+     || dnsDomainIs(h, "ads-api.twitter.com")
+     || dnsDomainIs(h, "ads.linkedin.com")
+     || dnsDomainIs(h, "px.ads.linkedin.com")
+     || dnsDomainIs(h, "ads.pinterest.com")
+     || dnsDomainIs(h, "log.pinterest.com")
+     || dnsDomainIs(h, "ads.snapchat.com")
+     || dnsDomainIs(h, "tr.snapchat.com")) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MICROSOFT / APPLE / SAMSUNG TELEMETRY
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "vortex.data.microsoft.com")
+     || dnsDomainIs(h, "telemetry.microsoft.com")
+     || dnsDomainIs(h, "data.microsoft.com")
+     || dnsDomainIs(h, "watson.telemetry.microsoft.com")
+     || dnsDomainIs(h, "settings-win.data.microsoft.com")
+     || dnsDomainIs(h, "events.data.microsoft.com")
+     || dnsDomainIs(h, "ads.msn.com")
+     || dnsDomainIs(h, "rad.msn.com")
+     || dnsDomainIs(h, "samsungcloudsolution.com") && /\/log/.test(url)
+     || dnsDomainIs(h, "samsungrm.net")
+     || dnsDomainIs(h, "iadsdk.apple.com")
+     || dnsDomainIs(h, "metrics.apple.com")
+     || dnsDomainIs(h, "metrics.icloud.com")) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // CRASH/ERROR REPORTING (often used as tracking vector)
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "sentry.io") && /\/api\/.*\/store/.test(url)
+     || dnsDomainIs(h, "bugsnag.com")
+     || dnsDomainIs(h, "raygun.io")
+     || dnsDomainIs(h, "rollbar.com")
+     || dnsDomainIs(h, "newrelic.com") && /\/log/.test(url)
+     || dnsDomainIs(h, "datadoghq.com") && /\/intake/.test(url)) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FINGERPRINTING / DEVICE ID PROVIDERS
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "fingerprintjs.com")
+     || dnsDomainIs(h, "fpjs.io")
+     || dnsDomainIs(h, "iovation.com")
+     || dnsDomainIs(h, "perimeterx.net")
+     || dnsDomainIs(h, "imrworldwide.com")     // Nielsen
+     || dnsDomainIs(h, "demdex.net")            // Adobe Audience
+     || dnsDomainIs(h, "everesttech.net")
+     || dnsDomainIs(h, "omtrdc.net")             // Adobe Analytics
+     || dnsDomainIs(h, "2o7.net")                // Adobe SiteCatalyst
+     || dnsDomainIs(h, "247-inc.net")
+     || dnsDomainIs(h, "tealiumiq.com")) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ROMANIAN-SPECIFIC TRACKERS (relevant for RO users)
+    // ─────────────────────────────────────────────────────────────────────
+    if (dnsDomainIs(h, "trafic.ro")
+     || dnsDomainIs(h, "gemius.pl")
+     || dnsDomainIs(h, "gemius.ro")
+     || dnsDomainIs(h, "sati.ro")
+     || dnsDomainIs(h, "monitor.ro") && /\/track/.test(url)
+     || dnsDomainIs(h, "digitalvelocity.ro") && /\/log/.test(url)) {
+        return "PROXY 0.0.0.0:1";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // DEFAULT: pass through to WARP (DIRECT — no proxy)
+    // WireGuard will handle DNS resolution via 1.1.1.1/1.0.0.1
+    // ─────────────────────────────────────────────────────────────────────
+    return "DIRECT";
 }
