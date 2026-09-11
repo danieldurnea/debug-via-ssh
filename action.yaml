@@ -1,40 +1,167 @@
-##
 name: 'Debug via SSH'
 description: 'SSH to a GitHub Actions runner using ngrok'
 branding:
-  icon: 'terminal'  
+  icon: 'terminal'
   color: 'green'
+
 inputs:
   SSH_PASS:
     description: 'Password for SSH session'
     required: true
   NGROK_AUTH_TOKEN:
-    description: 'Authentification token for ngrok'
+    description: 'Authentication token for ngrok'
     required: true
   NGROK_REGION:
     description: 'Region for ngrok session'
     required: false
-    default: 'us'
+    default: 'eu'
   NGROK_TIMEOUT:
     description: 'Timeout in seconds for ngrok session'
-    default: 21500
+    required: false
+    default: '3600'
+
 runs:
   using: "composite"
   steps:
-    - name: Check inputs
-      run: |
-        if [ -z "${{ inputs.SSH_PASS }}" ]
-        then
-          echo "SSH_PASS needs to be passed in the 'with' field."
-          exit 1
-        fi
-        if [ -z "${{ inputs.NGROK_AUTH_TOKEN }}" ]
-        then
-          echo "NGROK_AUTH_TOKEN needs to be passed in the 'with' field."
-          exit 1
-        fi
+    - name: Validate inputs
       shell: bash
-    - name: Meet OS specific prerequisites
+      run: |
+        if [ -z "${{ inputs.SSH_PASS }}" ]; then
+          echo "::error::SSH_PASS is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.NGROK_AUTH_TOKEN }}" ]; then
+          echo "::error::NGROK_AUTH_TOKEN is required"
+          exit 1
+        fi
+
+    - name: Setup environment
+      shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Linux)
+            echo "ngrok-v3-stable-linux-amd64.tgz" > ngrok_archive
+            whoami > ssh_user
+            echo "${{ inputs.SSH_PASS }}" | sudo passwd --stdin $(cat ssh_user) 2>/dev/null || \
+            echo -e "\( {{ inputs.SSH_PASS }}\n \){{ inputs.SSH_PASS }}" | sudo passwd $(cat ssh_user)
+            ;;
+          macOS)
+            echo "ngrok-v3-stable-darwin-amd64.zip" > ngrok_archive
+            echo "root" > ssh_user
+            echo 'PermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config >/dev/null
+            sudo launchctl unload /System/Library/LaunchDaemons/ssh.plist || true
+            sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+            echo -e "\( {{ inputs.SSH_PASS }}\n \){{ inputs.SSH_PASS }}" | sudo passwd root
+            ;;
+          Windows)
+            echo "ngrok-v3-stable-windows-amd64.zip" > ngrok_archive
+            echo "$USERNAME" > ssh_user
+            # Windows support remains limited - recommend using Linux runners
+            echo "::warning::Windows support is experimental"
+            ;;
+          *)
+            echo "::error::Unsupported OS: ${{ runner.os }}"
+            exit 1
+            ;;
+        esac
+
+    - name: Install ngrok
+      shell: bash
+      run: |
+        ARCHIVE=$(cat ngrok_archive)
+        echo "Downloading ngrok ($ARCHIVE)..."
+        
+        if [[ "$ARCHIVE" == *.tgz ]]; then
+          curl -sL "https://bin.equinox.io/c/bNyj1mQVY4c/$ARCHIVE" | tar xz
+        else
+          curl -sL "https://bin.equinox.io/c/bNyj1mQVY4c/$ARCHIVE" -o ngrok.zip
+          unzip -qo ngrok.zip
+          rm ngrok.zip
+        fi
+        
+        chmod +x ./ngrok
+        ./ngrok version
+
+    - name: Authenticate ngrok
+      shell: bash
+      run: |
+        ./ngrok config add-authtoken "${{ inputs.NGROK_AUTH_TOKEN }}"
+
+    - name: Start ngrok & wait for connection
+      shell: bash
+      run: |
+        set -e
+        
+        echo "Starting ngrok tunnel on port 22..."
+        ./ngrok tcp 22 --log=stdout --log-format=logfmt --region="${{ inputs.NGROK_REGION }}" > .ngrok.log 2>&1 &
+        NGROK_PID=$!
+        
+        # Wait for tunnel
+        echo "Waiting for ngrok tunnel..."
+        for i in {1..30}; do
+          if grep -q "started tunnel" .ngrok.log 2>/dev/null; then
+            break
+          fi
+          if ! kill -0 $NGROK_PID 2>/dev/null; then
+            echo "::error::ngrok failed to start"
+            cat .ngrok.log
+            exit 1
+          fi
+          sleep 1
+        done
+        
+        # Extract connection string
+        TUNNEL=$(grep -oE "tcp://[0-9.]+:[0-9]+" .ngrok.log | head -1)
+        if [ -z "$TUNNEL" ]; then
+          echo "::error::Could not get ngrok tunnel address"
+          cat .ngrok.log
+          exit 1
+        fi
+        
+        HOST=$(echo $TUNNEL | sed 's|tcp://||' | cut -d: -f1)
+        PORT=$(echo $TUNNEL | cut -d: -f3)
+        USER=$(cat ssh_user)
+        
+        CONTINUE_FILE="$HOME/continue"
+        TIMEOUT=${{ inputs.NGROK_TIMEOUT }}
+        
+        echo ""
+        echo "=================================================="
+        echo "  SSH Connection Ready"
+        echo "=================================================="
+        echo ""
+        echo "  ssh $USER@$HOST -p $PORT"
+        echo ""
+        echo "  Password: ${{ inputs.SSH_PASS }}"
+        echo ""
+        echo "  To continue the workflow after debugging:"
+        echo "  touch $CONTINUE_FILE"
+        echo ""
+        echo "=================================================="
+        echo ""
+        
+        # Countdown loop
+        while [ ! -f "$CONTINUE_FILE" ] && [ $TIMEOUT -gt 0 ]; do
+          HRS=$((TIMEOUT / 3600))
+          MINS=$(( (TIMEOUT % 3600) / 60 ))
+          SECS=$((TIMEOUT % 60))
+          
+          printf "\r Time left: %02d:%02d:%02d | Waiting for 'touch %s'..." $HRS $MINS $SECS "$CONTINUE_FILE"
+          
+          sleep 10
+          TIMEOUT=$((TIMEOUT - 10))
+        done
+        
+        echo ""
+        if [ -f "$CONTINUE_FILE" ]; then
+          echo "Continue signal received. Resuming workflow..."
+          rm -f "$CONTINUE_FILE"
+        else
+          echo "Timeout reached. Continuing workflow..."
+        fi
+        
+        # Cleanup
+        kill $NGROK_PID 2>/dev/null || true    - name: Meet OS specific prerequisites
       run: |
         if('${{ runner.os }}' -eq 'Linux')
         {
