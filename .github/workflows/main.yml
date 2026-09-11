@@ -1,5 +1,8 @@
 - name: Start SSH session
   uses: luchihoratiu/debug-via-ssh@v1.2
+  if: failure() && github.event_name != 'pull_request'  # rulează doar la eșec și nu pe PR-uri
   with:
     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
     SSH_PASS: ${{ secrets.SSH_PASS }}
+    NGROK_REGION: eu          # mai aproape de tine (EEST) → latență mai mică
+    NGROK_TIMEOUT: 3600       # 1 oră (default e \~6 ore → consumă inutil minute de runner)
